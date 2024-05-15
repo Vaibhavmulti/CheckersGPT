@@ -2,9 +2,7 @@ from checkers.game import Game
 import numpy as np
 import random
 from tqdm import tqdm
-from threading import Thread, Lock
-
-lock = Lock() 
+import multiprocessing
 
 def possible_capture_move(move):
     x = move[0]
@@ -50,28 +48,31 @@ def synthetic_games(game, moves):
     return game_string
 
 
-def generate_data(file, num_games):
-    for _ in tqdm(range(num_games)):
+def generate_data(filename, num_games):
+    collate_games = ""
+    for i, _ in enumerate(tqdm(range(num_games))):
         game = Game()
-        game_data = synthetic_games(game, 20)
-        with lock:
-            file.write(game_data + '\n')
+        collate_games += synthetic_games(game, 30) + '\n'
+        if (i + 1)  % 1600 == 0:
+            with open(filename, 'a') as file:
+                file.write(collate_games)
+            collate_games = ""
 
 
 
 def main():
-    num_games = 16000000
-    num_threads = 1000
-    num_games_per_thread = int(num_games / num_threads)  # Total 16,000,000 games, divided equally among threads
-    with open('synthetic_dataparallel16M.txt', 'w') as file:
-        threads = []
-        for _ in range(num_threads):
-            thread = Thread(target=generate_data, args=(file, num_games_per_thread))
-            thread.start()
-            threads.append(thread)
-        
-        for thread in threads:
-            thread.join()  # Wait for all threads to finish before closing the file
+    num_entries = 16000000
+    num_processes = 100
+    chunk_size = num_entries // num_processes
+    processes = []
+    for i in range(num_processes):
+        filename = f"datagen/data_part_{i}.txt"
+        p = multiprocessing.Process(target=generate_data, args=(filename, chunk_size))
+        processes.append(p)
+        p.start()
+
+    for p in processes:
+        p.join() 
 
 if __name__ == "__main__":
     main()

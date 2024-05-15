@@ -23,3 +23,5 @@ chess_llm_interpretability/contrastive_activations/
 
 /home/vaibhav/nanogpt/ourGPTcopy/checkersengine/checkers/synthetic_data16M.txt
 /home/vaibhav/nanogpt/ourGPTcopy/checkersengine/checkers/synthetic_dataparallel16M.txt
+
+checkersengine/checkers/datagen/

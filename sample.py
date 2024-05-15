@@ -8,6 +8,9 @@ import torch
 import tiktoken
 from model import GPTConfig, GPT
 
+MODEL_NAME = "Checkers16M.pt"
+SAMPLE_DUMP_NAME = "data/checkers_games/sample_dump/CHANGEME"
+META_PATH = "data/checkers_games/Synthetic16m_meta.pkl"
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
 out_dir = 'out' # ignored if init_from is not 'resume'
@@ -36,7 +39,7 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 # model
 if init_from == 'resume':
     # init from a model saved in a specific directory
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = os.path.join(out_dir, MODEL_NAME)
     checkpoint = torch.load(ckpt_path, map_location=device)
     gptconf = GPTConfig(**checkpoint['model_args'])
     #HARDCOED
@@ -63,7 +66,7 @@ if init_from == 'resume' and 'config' in checkpoint and 'dataset' in checkpoint[
     print("Creates meta path")
     #HARDCODED
     #meta_path = os.path.join('data', checkpoint['config']['dataset'], 'meta.pkl')
-    meta_path = "/home/vaibhav/nanogpt/ourGPT/meta.pkl"
+    meta_path = META_PATH
     load_meta = os.path.exists(meta_path)
 if load_meta:
     print(f"Loading meta from {meta_path}...")
@@ -100,7 +103,7 @@ with torch.no_grad():
 import pickle
 
 # Pickle the list
-with open('test_timedecode.pkl', 'wb') as f:
+with open(SAMPLE_DUMP_NAME+'.pkl', 'wb') as f:
     pickle.dump(listofdecodes, f)
 
 

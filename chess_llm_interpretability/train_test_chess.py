@@ -38,6 +38,7 @@ BATCH_SIZE = 2
 D_MODEL = 512
 N_HEADS = 8
 WANDB_LOGGING = False
+META_NAME = "Synthetic16m_meta"
 
 DEVICE = (
     "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -45,7 +46,7 @@ DEVICE = (
 logger.info(f"Using device: {DEVICE}")
 
 # meta is used to encode the string pgn strings into integer sequences
-with open(f"{MODEL_DIR}meta.pkl", "rb") as f:
+with open(f"{MODEL_DIR}{META_NAME}.pkl", "rb") as f:
     meta = pickle.load(f)
 
 logger.info(meta)
@@ -777,6 +778,10 @@ if __name__ == "__main__":
 
         # Quick and janky way to select between piece and skill probes
         if args.probe == "piece":
+            
+            #############
+            #CHANGE THIS!!!!!
+            ############
             saved_probes = [
                 "tf_lens_checkers_checkers_piece_probe_layer_0.pth",
                 "tf_lens_checkers_checkers_piece_probe_layer_1.pth",
@@ -858,11 +863,15 @@ if __name__ == "__main__":
         last_layer = 7 #7
 
         # When training a probe, you have to set all parameters such as model name, dataset prefix, etc.
-        dataset_prefix = "checkers_"
+        dataset_prefix = "checkers16M_"
         split = "train"
         n_layers = 8
         #model_name = f"tf_lens_{dataset_prefix}{n_layers}layers_ckpt_no_optimizer"
-        model_name = "tf_lens_checkers"
+        
+        #############
+        #CHANGE THIS!!!!!
+        ############
+        model_name = "tf_lens_Checkers16M"
         input_dataframe_file = f"{DATA_DIR}{dataset_prefix}{split}.csv"
         config = chess_utils.set_config_min_max_vals_and_column_name(
             config, input_dataframe_file, dataset_prefix

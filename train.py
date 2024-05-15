@@ -29,6 +29,8 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
+DATA_PATH = "data/checkers_games"
+MODEL_NAME = "Checkers16M.pt"
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
@@ -45,7 +47,7 @@ wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
-gradient_accumulation_steps = 4 #5* 8 #5 * 8 # used to simulate larger batch sizes
+gradient_accumulation_steps = 5*3  #5* 8 #5 * 8 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 400 #1024
 # model
@@ -124,29 +126,11 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 #data_dir = os.path.join('data', dataset)
 #data_dir = ''
-# train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint8, mode='r')
-# val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint8, mode='r')
-train_data = np.memmap('train.bin', dtype=np.uint8, mode='r')
-val_data = np.memmap('val.bin', dtype=np.uint8, mode='r')
-
-import random
-def random_multiple_of_400(end):
-    # Calculate the lowest multiple of 400 greater than or equal to start
-    start_multiple = 0
-    # Calculate the highest multiple of 400 less than or equal to end
-    end_multiple = end - (end % 400)
-    
-    # Generate a list of all multiples of 400 within the range
-    multiples = list(range(start_multiple, end_multiple + 1, 400))
-    
-    # Select a random multiple
-    if multiples:
-        return random.choice(multiples)
-    else:
-        raise "NO multiples of 400 found"
-        return None  # Return None if no multiples were found in the range
-
-# Example usage
+train_data = np.memmap(os.path.join(DATA_PATH, 'train.bin'), dtype=np.uint8, mode='r')
+val_data = np.memmap(os.path.join(DATA_PATH, 'val.bin'), dtype=np.uint8, mode='r')
+# TRAIN_BIN_PATH
+# train_data = np.memmap('train.bin', dtype=np.uint8, mode='r')
+#val_data = np.memmap('val.bin', dtype=np.uint8, mode='r')
 
 
 def get_batch(split):
@@ -168,14 +152,14 @@ iter_num = 0
 best_val_loss = 1e9
 
 # attempt to derive vocab_size from the dataset
-# meta_path = os.path.join(data_dir, 'meta.pkl')
-# meta_vocab_size = None
-# if os.path.exists(meta_path):
-#     with open(meta_path, 'rb') as f:
-#         meta = pickle.load(f)
-#     meta_vocab_size = meta['vocab_size']
-#     print(f"found vocab_size = {meta_vocab_size} (inside {meta_path})")
-meta_vocab_size = 17    #HARDCODED
+meta_path = os.path.join(DATA_PATH, 'meta.pkl')
+meta_vocab_size = None
+if os.path.exists(meta_path):
+    with open(meta_path, 'rb') as f:
+        meta = pickle.load(f)
+    meta_vocab_size = meta['vocab_size']
+    print(f"found vocab_size = {meta_vocab_size} (inside {meta_path})")
+#meta_vocab_size = 16    #HARDCODED
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
@@ -317,7 +301,7 @@ while True:
                     'config': config,
                 }
                 print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                torch.save(checkpoint, os.path.join(out_dir, MODEL_NAME))
     if iter_num == 0 and eval_only:
         break
 

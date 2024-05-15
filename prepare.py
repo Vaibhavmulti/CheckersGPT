@@ -21,6 +21,12 @@ dtype = np.uint8  # Currently there are only 32 tokens in the chess LLMs vocab
 # it is better than 1 usually though
 num_proc_load_dataset = num_proc
 
+
+INPUT_FILE_PATH = "/home/vaibhav/nanogpt/ourGPTcopy/checkersengine/checkers/merged_file.txt"
+OUTPUT_CSV_PATH = "data/checkers_games/output.csv"
+MODEL_PICKLE_NAME = "data/checkers_games/Synthetic16m_meta.pkl"
+DATA_BIN_PATH = "data/checkers_games"
+
 if __name__ == "__main__":
     # dataset = load_dataset("csv", data_files={"train": "pgn.csv"}) # For local testing
 
@@ -30,8 +36,8 @@ if __name__ == "__main__":
 
 
     # Define the path to your text file and the output CSV file
-    input_file_path = 'synthetic_data16M.txt'
-    output_csv_path = 'output.csv'
+    input_file_path = INPUT_FILE_PATH
+    output_csv_path = OUTPUT_CSV_PATH
 
     # Initialize a list to hold all transcripts
     transcripts = []
@@ -63,9 +69,9 @@ if __name__ == "__main__":
 
     
     # Calculate lengths of each string in the 'transcripts' column
-    # df['length'] = df['transcript'].apply(len)
+    #df['length'] = df['transcript'].apply(len)
 
-    # # Calculate minimum, maximum, and average length
+    # Calculate minimum, maximum, and average length
     # min_length = df['length'].min()
     # max_length = df['length'].max()
     # avg_length = df['length'].mean()
@@ -81,9 +87,9 @@ if __name__ == "__main__":
     # Apply the function to pad the strings in the 'transcripts' column
     df['transcript'] = df['transcript'].apply(pad_to_400)
     
-    # df['length'] = df['transcript'].apply(len)
+    df['length'] = df['transcript'].apply(len)
 
-    # # Calculate minimum, maximum, and average length
+    # Calculate minimum, maximum, and average length
     # min_length = df['length'].min()
     # max_length = df['length'].max()
     # avg_length = df['length'].mean()
@@ -98,7 +104,7 @@ if __name__ == "__main__":
     df.to_csv(output_csv_path, index=False)
 
 
-    with open('desired_output.txt', 'r') as f:
+    with open(INPUT_FILE_PATH, 'r') as f:
         data = f.read()
         dataset = data.split('\n')
     print(f"length of dataset in characters: {len(data):,}")
@@ -129,7 +135,7 @@ if __name__ == "__main__":
     #mod
     # dataset_dict = {'transcript': dataset}
     # dataset = Dataset.from_dict(dataset_dict)
-    dataset = load_dataset("csv", data_files={"train": "output.csv"})
+    dataset = load_dataset("csv", data_files={"train": OUTPUT_CSV_PATH})
     #dataset = load_dataset("csv", data_files="output.csv")
     # by default only contains the 'train' split, so create a test split
     #split_dataset = dataset.train_test_split(test_size=0.01, seed=2357, shuffle=True)
@@ -151,36 +157,10 @@ if __name__ == "__main__":
     #         num_rows: 4007
     #     })
     # })
-    # train_max = -1
-    # train_min = 100000
-    # train_avg = 0
-
-    # for _ in split_dataset['train']['transcript']:
-    #     length = len(_)
-    #     if length>train_max:
-    #         train_max = length
-    #     elif length<train_min:
-    #         train_min = length
-    #     train_avg+=length
-
-    # for _ in split_dataset['val']['transcript']:
-    #     length = len(_)
-    #     if length>train_max:
-    #         train_max = length
-    #     elif length<train_min:
-    #         train_min = length
-    #     train_avg+=length
-    # train_avg/=len(split_dataset['train']['transcript'])
-
     
-    # print(f"max _length {train_max}")
-    # print(f"min _length {train_min}")
-    # print(f"avg _length {train_avg}")
-
-    
-    our_pickle = {'vocab_size':17, 'itos':itos, 'stoi':stoi}
+    our_pickle = {'vocab_size':16, 'itos':itos, 'stoi':stoi}
     # Pickle the dictionary
-    with open('meta.pkl', 'wb') as f:
+    with open(MODEL_PICKLE_NAME, 'wb') as f:
         pickle.dump(our_pickle, f)
 
     #we now want to tokenize the dataset. Using meta.pkl in the same directory as this file
@@ -228,13 +208,11 @@ if __name__ == "__main__":
     for split, dset in tokenized.items():
         arr_len = np.sum(dset["len"], dtype=np.uint64)
         print(f"{split} has {arr_len} tokens")
-        filename = os.path.join(os.path.dirname(__file__), f"{split}.bin")
+        #filename = os.path.join(os.path.dirname(__file__), f"{split}.bin")
+        filename = os.path.join(DATA_BIN_PATH, f"{split}.bin")
         arr = np.memmap(filename, dtype=dtype, mode="w+", shape=(arr_len,))
         print(arr.shape)
-        if split == "train":
-            total_batches = 1024
-        else:
-            total_batches = 227
+        total_batches = 1024
 
         idx = 0
         for batch_idx in tqdm(range(total_batches), desc=f"writing {filename}"):
@@ -250,24 +228,4 @@ if __name__ == "__main__":
             arr[idx : idx + len(arr_batch)] = arr_batch
             idx += len(arr_batch)
         arr.flush()
-    
-    train_data = np.memmap('train.bin', dtype=np.uint8, mode='r')
-    val_data = np.memmap('val.bin', dtype=np.uint8, mode='r')
-    for i in range(0,4000,400):
-        print(train_data[i])
-    #ix = torch.randint(0, len(train_data) // (400 + 1), (12,)) * (400 + 1)
-    block_size = 400
-    ix = torch.randint(0, len(train_data) // (block_size + 1), (12,)) * (block_size +1)
-    
-    print(ix)
-    
-    x = torch.stack([torch.from_numpy((train_data[i:i+400]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((train_data[i+1:i+1+400]).astype(np.int64)) for i in ix])
-    print(x)
-    print(y)
-    # print(train_data.shape)
-    # print(train_data[:10])
-    # print(val_data.shape)
-    # print(val_data[:10])
-    # print(stoi)
 

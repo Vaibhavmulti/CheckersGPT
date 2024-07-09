@@ -21,7 +21,7 @@ LOAD_AND_CONVERT_CHECKPOINT = True
 device = "cpu"
 
 MODEL_DIR = "models/"
-MODEL_NAME = "Checkers16M.pt"
+MODEL_NAME = "CheckersHuman.pt"
 
 n_heads = 8
 n_layers = 8
@@ -143,7 +143,7 @@ if LOAD_AND_CONVERT_CHECKPOINT:
         d_head=int(d_model / n_heads),
         n_heads=n_heads,
         d_mlp=d_model * 4,
-        d_vocab=16, #32,
+        d_vocab=17, #32,
         n_ctx=399, #1023,
         act_fn="gelu",
         normalization_type="LNPre",

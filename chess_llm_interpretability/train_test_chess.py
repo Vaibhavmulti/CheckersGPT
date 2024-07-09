@@ -38,7 +38,7 @@ BATCH_SIZE = 2
 D_MODEL = 512
 N_HEADS = 8
 WANDB_LOGGING = False
-META_NAME = "Synthetic16m_meta"
+META_NAME = "meta"
 
 DEVICE = (
     "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -400,8 +400,32 @@ def linear_probe_forward_pass(
 
     assert probe_out.shape == state_stack_one_hot.shape
 
-    accuracy = (probe_out[0].argmax(-1) == state_stack_one_hot[0].argmax(-1)).float().mean()
+    # Create a mask for the black cells on an 8x8 checkers board
+    def create_black_cell_mask(board_size=8):
+        mask = torch.zeros(board_size, board_size, dtype=torch.bool)
+        for i in range(board_size):
+            for j in range(board_size):
+                if (i + j) % 2 != 0:
+                    mask[i, j] = True
+        return mask
 
+    # Create the black cell mask
+    black_cell_mask = create_black_cell_mask()
+
+    # Extract the relevant slices from probe_out and state_stack_one_hot
+    probe_out_argmax = probe_out[0].argmax(-1)  # Shape: [2, 14, 8, 8]
+    state_stack_one_hot_argmax = state_stack_one_hot[0].argmax(-1)  # Shape: [2, 14, 8, 8]
+
+    # Expand the mask to match the dimensions of the tensors
+    black_cell_mask_expanded = black_cell_mask.unsqueeze(0).unsqueeze(0).expand_as(probe_out_argmax)
+
+    # Filter out the white cells by applying the mask
+    probe_out_masked = probe_out_argmax[black_cell_mask_expanded]
+    state_stack_one_hot_masked = state_stack_one_hot_argmax[black_cell_mask_expanded]
+
+    # Calculate accuracy
+    accuracy = (probe_out_masked == state_stack_one_hot_masked).float().mean()
+    #accuracy = (probe_out[0].argmax(-1) == state_stack_one_hot[0].argmax(-1)).float().mean()
     probe_log_probs = probe_out.log_softmax(-1)
     probe_correct_log_probs = (
         einops.reduce(
@@ -783,14 +807,14 @@ if __name__ == "__main__":
             #CHANGE THIS!!!!!
             ############
             saved_probes = [
-                "tf_lens_checkers_checkers_piece_probe_layer_0.pth",
-                "tf_lens_checkers_checkers_piece_probe_layer_1.pth",
-                "tf_lens_checkers_checkers_piece_probe_layer_2.pth",
-                "tf_lens_checkers_checkers_piece_probe_layer_3.pth",
-                "tf_lens_checkers_checkers_piece_probe_layer_4.pth",
-                "tf_lens_checkers_checkers_piece_probe_layer_5.pth",
-                "tf_lens_checkers_checkers_piece_probe_layer_6.pth", 
-                "tf_lens_checkers_checkers_piece_probe_layer_7.pth"
+                "tf_lens_CheckersHuman_checkers_piece_probe_layer_0.pth",
+                "tf_lens_CheckersHuman_checkers_piece_probe_layer_1.pth",
+                "tf_lens_CheckersHuman_checkers_piece_probe_layer_2.pth",
+                "tf_lens_CheckersHuman_checkers_piece_probe_layer_3.pth",
+                "tf_lens_CheckersHuman_checkers_piece_probe_layer_4.pth",
+                "tf_lens_CheckersHuman_checkers_piece_probe_layer_5.pth",
+                "tf_lens_CheckersHuman_checkers_piece_probe_layer_6.pth",
+                "tf_lens_CheckersHuman_checkers_piece_probe_layer_7.pth"
             ]
             # saved_probes = [
             #     "tf_lens_lichess_8layers_ckpt_no_optimizer_chess_piece_probe_layer_5.pth"
@@ -863,7 +887,7 @@ if __name__ == "__main__":
         last_layer = 7 #7
 
         # When training a probe, you have to set all parameters such as model name, dataset prefix, etc.
-        dataset_prefix = "checkers16M_"
+        dataset_prefix = "checkers_"
         split = "train"
         n_layers = 8
         #model_name = f"tf_lens_{dataset_prefix}{n_layers}layers_ckpt_no_optimizer"
@@ -871,7 +895,7 @@ if __name__ == "__main__":
         #############
         #CHANGE THIS!!!!!
         ############
-        model_name = "tf_lens_Checkers16M"
+        model_name = "tf_lens_CheckersHuman"
         input_dataframe_file = f"{DATA_DIR}{dataset_prefix}{split}.csv"
         config = chess_utils.set_config_min_max_vals_and_column_name(
             config, input_dataframe_file, dataset_prefix

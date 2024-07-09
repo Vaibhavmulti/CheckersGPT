@@ -25,3 +25,9 @@ chess_llm_interpretability/contrastive_activations/
 /home/vaibhav/nanogpt/ourGPTcopy/checkersengine/checkers/synthetic_dataparallel16M.txt
 
 checkersengine/checkers/datagen/
+
+/home/vaibhav/nanogpt/ourGPTcopy/out-shakespeare-char
+/home/vaibhav/nanogpt/ourGPTcopy/checkersengine/checkers/merged_file.txt
+
+out-shakespeare-char/
+/chess_llm_interpretability/*.png

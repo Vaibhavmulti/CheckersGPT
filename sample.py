@@ -8,15 +8,16 @@ import torch
 import tiktoken
 from model import GPTConfig, GPT
 
-MODEL_NAME = "Checkers16M.pt"
-SAMPLE_DUMP_NAME = "data/checkers_games/sample_dump/CHANGEME"
-META_PATH = "data/checkers_games/Synthetic16m_meta.pkl"
+#Specify your model name here
+MODEL_NAME = "CheckersHuman500.pt"
+SAMPLE_DUMP_NAME = "data/checkers_games/sample_dump/Namedecodingstyle"
+META_PATH = "data/checkers_games/meta.pkl"
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
-out_dir = 'out' # ignored if init_from is not 'resume'
-#start = "\n" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
-start = "FILE:prompt.txt" 
-num_samples = 20 # number of samples to draw
+out_dir = 'out-shakespeare-char' # ignored if init_from is not 'resume'
+start = "\n" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
+#start = "FILE:prompt.txt" 
+num_samples = 100 # number of samples to draw
 max_new_tokens = 400 #500 # number of tokens generated in each sample
 temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
 top_k = 200 # retain only the top_k most likely tokens, clamp others to have 0 probability

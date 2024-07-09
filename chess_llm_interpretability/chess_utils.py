@@ -35,8 +35,13 @@ from checkers.game import Game
 #     5: 11,
 #     6: 12,
 # }
+PIECE_TO_ONE_HOT_MAPPING = {
+    -1:0,
+    0:1,
+    1:2
+}
 # BLANK_INDEX = PIECE_TO_ONE_HOT_MAPPING[0]
-# ONE_HOT_TO_PIECE_MAPPING = {value: key for key, value in PIECE_TO_ONE_HOT_MAPPING.items()}
+ONE_HOT_TO_PIECE_MAPPING = {value: key for key, value in PIECE_TO_ONE_HOT_MAPPING.items()}
 
 
 def board_to_random_state() -> torch.Tensor:
@@ -256,19 +261,87 @@ def board_to_piece_state(game) -> torch.Tensor:
 #                 board.set_piece_at(chess.square(col_idx, row_idx), chess.Piece(piece_type, color))
 #     return board
 
+def multiple_moves(moves_split):
+    new_moves = moves_split[:2]
+    moves_split = moves_split[2:]
+    for move in moves_split:
+        new_moves.append(new_moves[-1])
+        new_moves.append(move)
+    return new_moves
 
-# def pgn_string_to_board(pgn_string: str) -> chess.Board:
-#     """Convert a PGN string to a chess.Board object.
-#     We are making an assumption that the PGN string is in this format:
-#     ;1.e4 e5 2. or ;1.e4 e5 2.Nf3"""
-#     board = chess.Board()
-#     for move in pgn_string.split():
-#         if "." in move:
-#             move = move.split(".")[1]
-#         if move == "":
-#             continue
-#         board.push_san(move)
-#     return board
+
+def pgn_string_to_board(pgn_string: str) -> chess.Board:
+    """Convert a PGN string to a chess.Board object.
+    We are making an assumption that the PGN string is in this format:
+    ;1.e4 e5 2. or ;1.e4 e5 2.Nf3"""
+    print(pgn_string)
+    #raise
+    loaded_list = pgn_string[1:].strip()
+    loaded_list = loaded_list.split()
+    #Remove the last string as it would be either indicating victory or it would be incomplete.
+    loaded_list = loaded_list[:-1]
+    #Remove the numbering of the moves
+    loaded_list = [item for item in loaded_list if '.' not in item]
+
+    game = loaded_list
+    checker = Game()
+    print("*"*100)
+    print(game)
+    print("*"*100)
+    for moves in game:
+        if '-' in moves:
+            moves_split = moves.split('-')
+            # if(len(moves_split)<=1) or moves_split[0]=="" or moves_split[1]=="":
+            #     filter_counter+=1
+            #     break
+        else:
+            moves_split = moves.split('x')
+            # if (len(moves_split)<=1) or moves_split[0]=="" or moves_split[1]=="":
+            #     filter_counter+=1
+            #     break
+        if len(moves_split) == 2:
+            #total_moves += 1
+            x = int(moves_split[0])
+            y = int(moves_split[1])
+            checker.move([x,y])
+            # if [x,y] in checker.get_possible_moves():
+            #     legal_moves +=1
+            #     checker.move([x,y])
+            # else:
+            #     print(moves)
+            #     break_counter+=1
+            #     break
+        else:
+            moves_split = multiple_moves(moves_split) 
+            itr_max = len(moves_split)
+            #total_moves+=int(itr_max/2)
+            itr = 0
+            #flag = 0
+            while(itr<itr_max):
+                x = int(moves_split[itr])
+                y = int(moves_split[itr+1])
+                checker.move([x,y])
+                # if [x,y] in checker.get_possible_moves():
+                #     legal_moves +=1
+                #     checker.move([x,y])
+                # else:
+                #     print(moves)
+                #     break_counter+=1
+                #     flag =1
+                #     break
+                itr+=2
+    return checker
+    
+    
+    # board = chess.Board()
+    # for move in pgn_string.split():
+    #     if "." in move:
+    #         move = move.split(".")[1]
+    #     if move == "":
+    #         continue
+    #     board.push_san(move)
+    # return board
+
 
 def multiple_moves(moves_split):
     new_moves = moves_split[:2]
@@ -483,10 +556,12 @@ def one_hot_to_state_stack(one_hot: torch.Tensor, min_val: int) -> torch.Tensor:
     return state_stack
 
 
-# def square_to_coordinate(square: chess.Square) -> tuple[int, int]:
-#     row = chess.square_rank(square)
-#     column = chess.square_file(square)
-#     return (row, column)
+def square_to_coordinate(square: chess.Square) -> tuple[int, int]:
+    # row = chess.square_rank(square)
+    # column = chess.square_file(square)
+    row = move_translater[square][0]
+    column = move_translater[square][1]
+    return (row, column)
 
 
 def find_dots_indices(moves_string: str) -> list[int]:
@@ -650,6 +725,7 @@ def get_model_move(
 
     input_length = len(idx[0])
     space_idx = encode_string(meta, " ")[0]
+    quit_on_2space = 0
     with torch.inference_mode():
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
@@ -666,18 +742,24 @@ def get_model_move(
                 logits = model(idx_cond)
                 # pluck the logits at the final step and scale by desired temperature
                 logits = logits[:, -1, :] / temperature
+                if torch.isnan(logits).any() or torch.isinf(logits).any():
+                    print(idx_cond)
+                    print(logits)
+                    raise ValueError("Logits contain NaNs or Infs")
                 # apply softmax to convert logits to (normalized) probabilities
                 probs = F.softmax(logits, dim=-1)
                 # sample from the distribution
                 idx_next = torch.multinomial(probs, num_samples=1)
             if idx_next[0] == space_idx:
+                quit_on_2space+=1
+            if quit_on_2space ==2:
                 break
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
 
     model_response = idx[:, input_length:]
     model_move = decode_list(meta, model_response[0].tolist())
-    return model_move
+    return model_move.strip()
 
 
 class PlayerColor(Enum):

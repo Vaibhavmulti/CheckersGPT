@@ -34,6 +34,7 @@ class Game:
 
 	def get_possible_moves(self):
 		return self.board.get_possible_moves()
-
+		
 	def whose_turn(self):
 		return self.board.player_turn
+	

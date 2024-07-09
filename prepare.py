@@ -21,11 +21,9 @@ dtype = np.uint8  # Currently there are only 32 tokens in the chess LLMs vocab
 # it is better than 1 usually though
 num_proc_load_dataset = num_proc
 
+HUMAN_DATA_PATH = "data/checkers_games/OCA_2.0.pdn"
+DATA_PATH = "data/checkers_games"
 
-INPUT_FILE_PATH = "/home/vaibhav/nanogpt/ourGPTcopy/checkersengine/checkers/merged_file.txt"
-OUTPUT_CSV_PATH = "data/checkers_games/output.csv"
-MODEL_PICKLE_NAME = "data/checkers_games/Synthetic16m_meta.pkl"
-DATA_BIN_PATH = "data/checkers_games"
 
 if __name__ == "__main__":
     # dataset = load_dataset("csv", data_files={"train": "pgn.csv"}) # For local testing
@@ -34,10 +32,39 @@ if __name__ == "__main__":
     #file_path = "lichess_6gb_blocks.zip"
     # file_path = "smaller_pgn_file_blocks.zip"
 
+    #CheckersGPT/data/checkers_games/OCA_2.0.pdn
+    with open(HUMAN_DATA_PATH, "r") as file:
+        pdn_content = file.read()
+        moves = pdn_content.split('\n\n')
+
+    # Filter out the games from the file
+    with open(os.path.join(DATA_PATH, "filter.txt"), "w") as file:
+        for move in moves:
+            move = re.sub(r'\[.*?\]\n?', '', move)  # Upper Game stats
+            move = re.sub(r'\n\s*', ' ', move) # Moves have newlines for beautifying
+            move = re.sub(r'\{.*?\}', '', move)  # In moves there are some human interpretable comments
+            file.write(move+'\n')
+    
+    
+    # Define the paths for your input and output files
+    input_file_path = os.path.join(DATA_PATH, "filter.txt")
+    output_file_path = os.path.join(DATA_PATH, "desired_output.txt")
+
+    # Open the input file in read mode and the output file in write mode
+    #firstline = True
+    with open(input_file_path, 'r') as infile, open(output_file_path, 'w') as outfile:
+        # Read each line from the input file
+        # if firstline:
+        #     firstline = False
+        #     outfile.write("transcript\n")
+        for line in infile:
+            # Write the modified line to the output file
+            outfile.write(';' + line)
+
 
     # Define the path to your text file and the output CSV file
-    input_file_path = INPUT_FILE_PATH
-    output_csv_path = OUTPUT_CSV_PATH
+    input_file_path = os.path.join(DATA_PATH, "desired_output.txt")
+    output_csv_path = os.path.join(DATA_PATH, "output.csv")
 
     # Initialize a list to hold all transcripts
     transcripts = []
@@ -53,7 +80,8 @@ if __name__ == "__main__":
 
     # Create a DataFrame
     df = pd.DataFrame(transcripts, columns=['transcript'])
-    
+
+
     def trim_to_400(text):
         if len(text) > 400:
             return text[:400]
@@ -69,9 +97,9 @@ if __name__ == "__main__":
 
     
     # Calculate lengths of each string in the 'transcripts' column
-    #df['length'] = df['transcript'].apply(len)
+    # df['length'] = df['transcript'].apply(len)
 
-    # Calculate minimum, maximum, and average length
+    # # Calculate minimum, maximum, and average length
     # min_length = df['length'].min()
     # max_length = df['length'].max()
     # avg_length = df['length'].mean()
@@ -87,9 +115,15 @@ if __name__ == "__main__":
     # Apply the function to pad the strings in the 'transcripts' column
     df['transcript'] = df['transcript'].apply(pad_to_400)
     
-    df['length'] = df['transcript'].apply(len)
+    # df2 = pd.read_csv('/home/vaibhav/nanogpt/CheckersGPT/data/checkers_games/top_rows.csv')
+    # df2['transcript'] = df2['transcript'].apply(trim_to_400)
+    # df2 = df2[df2['transcript'].apply(len) >= 100]
+    # # Apply the function to pad the strings in the 'transcripts' column
+    # df2['transcript'] = df2['transcript'].apply(pad_to_400)
+    
+    # df['length'] = df['transcript'].apply(len)
 
-    # Calculate minimum, maximum, and average length
+    # # Calculate minimum, maximum, and average length
     # min_length = df['length'].min()
     # max_length = df['length'].max()
     # avg_length = df['length'].mean()
@@ -102,13 +136,25 @@ if __name__ == "__main__":
 
     # Write the DataFrame to a CSV file
     df.to_csv(output_csv_path, index=False)
+    # df1 = pd.read_csv(output_csv_path)
+    
+    
+    # # Concatenate the two DataFrames
+    # merged_df = pd.concat([df1, df2])
+
+    # # Save the merged DataFrame to a new CSV file
+    # merged_df.to_csv(output_csv_path, index=False)
 
 
-    with open(INPUT_FILE_PATH, 'r') as f:
+    with open(os.path.join(DATA_PATH, "desired_output.txt"), 'r') as f:
         data = f.read()
         dataset = data.split('\n')
     print(f"length of dataset in characters: {len(data):,}")
-
+    
+    # df_final = pd.read_csv(output_csv_path)
+    # # If you want to process the entire CSV as a single string
+    # data = df_final.to_csv(index=False, header=False)
+    # #data = df_final.to_string(index=False)
     chars = sorted(list(set(data)))
     vocab_size = len(chars)
     print("all the unique characters:", ''.join(chars))
@@ -135,15 +181,18 @@ if __name__ == "__main__":
     #mod
     # dataset_dict = {'transcript': dataset}
     # dataset = Dataset.from_dict(dataset_dict)
-    dataset = load_dataset("csv", data_files={"train": OUTPUT_CSV_PATH})
+    dataset = load_dataset("csv", data_files={"train": os.path.join(DATA_PATH, "output.csv")})
     #dataset = load_dataset("csv", data_files="output.csv")
     # by default only contains the 'train' split, so create a test split
     #split_dataset = dataset.train_test_split(test_size=0.01, seed=2357, shuffle=True)
     
     split_dataset = dataset["train"].train_test_split(
-        test_size=0.01, seed=2357, shuffle=True
+        test_size=0.1, seed=2357, shuffle=True
     )
     split_dataset["val"] = split_dataset.pop("test")  # rename the test split to val
+    
+    print(split_dataset["val"])
+
     #print(split_dataset['train']['transcript'][0])
     # this results in:
     # >>> split_dataset
@@ -157,10 +206,36 @@ if __name__ == "__main__":
     #         num_rows: 4007
     #     })
     # })
+    # train_max = -1
+    # train_min = 100000
+    # train_avg = 0
+
+    # for _ in split_dataset['train']['transcript']:
+    #     length = len(_)
+    #     if length>train_max:
+    #         train_max = length
+    #     elif length<train_min:
+    #         train_min = length
+    #     train_avg+=length
+
+    # for _ in split_dataset['val']['transcript']:
+    #     length = len(_)
+    #     if length>train_max:
+    #         train_max = length
+    #     elif length<train_min:
+    #         train_min = length
+    #     train_avg+=length
+    # train_avg/=len(split_dataset['train']['transcript'])
+
     
-    our_pickle = {'vocab_size':16, 'itos':itos, 'stoi':stoi}
+    # print(f"max _length {train_max}")
+    # print(f"min _length {train_min}")
+    # print(f"avg _length {train_avg}")
+
+    
+    our_pickle = {'vocab_size':17, 'itos':itos, 'stoi':stoi}
     # Pickle the dictionary
-    with open(MODEL_PICKLE_NAME, 'wb') as f:
+    with open(os.path.join(DATA_PATH, "meta.pkl"), 'wb') as f:
         pickle.dump(our_pickle, f)
 
     #we now want to tokenize the dataset. Using meta.pkl in the same directory as this file
@@ -209,10 +284,14 @@ if __name__ == "__main__":
         arr_len = np.sum(dset["len"], dtype=np.uint64)
         print(f"{split} has {arr_len} tokens")
         #filename = os.path.join(os.path.dirname(__file__), f"{split}.bin")
-        filename = os.path.join(DATA_BIN_PATH, f"{split}.bin")
+        filename = os.path.join(DATA_PATH, f"{split}.bin")
+        
         arr = np.memmap(filename, dtype=dtype, mode="w+", shape=(arr_len,))
         print(arr.shape)
-        total_batches = 1024
+        if split == "train":
+            total_batches = 1024
+        else:
+            total_batches = 227
 
         idx = 0
         for batch_idx in tqdm(range(total_batches), desc=f"writing {filename}"):

@@ -7,6 +7,8 @@ import logging
 from functools import partial
 from enum import Enum
 import json
+import copy
+import os
 
 import chess_utils
 import train_test_chess
@@ -43,7 +45,7 @@ RECORDING_DIR = "intervention_logs/"
 SPLIT = "test"
 MODES = 1  # Currently only supporting 1 mode so this is fairly unnecessary
 START_POS = 0
-END_POS = 30
+END_POS = 16 #30
 BLANK_INDEX = chess_utils.PIECE_TO_ONE_HOT_MAPPING[0]
 SAMPLING_MOVES = 5
 TEMPERATURE = 1.0
@@ -328,6 +330,40 @@ def update_move_counters_best_per_move(
     return move_counters
 
 
+def parse_san(orig_board, argmax_model_move):
+    if "-" in argmax_model_move:
+        moves_split = argmax_model_move.split("-")
+    else:
+        moves_split = argmax_model_move.split("x")
+    
+    #Check valid move with a deep copy of the board.
+    if len(moves_split) == 2:
+        x = int(moves_split[0])
+        y = int(moves_split[1])
+        if [x,y] in orig_board.get_possible_moves():
+            pass
+        else:
+            raise
+    else:
+        deep_copy_board = copy.deepcopy(orig_board)
+        moves_split = multiple_moves(moves_split) 
+        itr_max = len(moves_split)
+        itr = 0
+        flag = 0
+        while(itr<itr_max):
+            x = int(moves_split[itr])
+            y = int(moves_split[itr+1])
+            if [x,y] in deep_copy_board.get_possible_moves():
+                deep_copy_board.move([x,y])
+            else:
+                flag =1
+                break
+            itr+=2
+        if flag==1:
+            raise
+        else:
+            pass
+
 def sample_moves_from_model(
     model,
     model_input: Int[Tensor, "num_games pgn_str_length"],
@@ -339,20 +375,24 @@ def sample_moves_from_model(
     unique_moves = set()
     move_tracker = MoveTracker()
     for _ in range(SAMPLING_MOVES):
+        #print(f'Model Input {model_input}')
         sampled_model_move = chess_utils.get_model_move(
             model, META, model_input, temperature=TEMPERATURE
         )
+        #print(sampled_model_move)
         try:
-            original_board.parse_san(sampled_model_move)
+            #original_board.parse_san(sampled_model_move)
+            parse_san(original_board, sampled_model_move)
             # print(f"Model original move: {sampled_model_move}")
             move_tracker.orig_board_sampled_legal_total += 1
             if sampled_model_move not in unique_moves:
                 move_tracker.orig_board_sampled_legal_unique += 1
         except:
-            # print(f"Invalid original move: {sampled_model_move}")
+            print(f"Invalid original move: {sampled_model_move}")
             pass
         try:
-            modified_board.parse_san(sampled_model_move)
+            #modified_board.parse_san(sampled_model_move)
+            parse_san(modified_board, sampled_model_move)
             print(f"Model modified move: {sampled_model_move}")
             move_tracker.mod_board_sampled_legal_total += 1
             if sampled_model_move not in unique_moves:
@@ -369,7 +409,8 @@ def sample_moves_from_model(
 
 def check_if_legal_move(board: chess.Board, move: str) -> bool:
     try:
-        board.parse_san(move)
+        #board.parse_san(move)
+        parse_san(board, move)
         return True
     except:
         return False
@@ -446,6 +487,26 @@ def average_probe_empty_cell_value(
     return average_cell_values
 
 
+def multiple_moves(moves_split):
+    new_moves = moves_split[:2]
+    moves_split = moves_split[2:]
+    for move in moves_split:
+        new_moves.append(new_moves[-1])
+        new_moves.append(move)
+    return new_moves
+
+
+move_translater = {
+    1 : (7,6), 2 : (7,4), 3 : (7,2), 4 : (7,0),
+    5 : (6,7), 6 : (6,5), 7 : (6,3), 8 : (6,1),
+    9 : (5,6), 10: (5,4), 11: (5,2), 12: (5,0),
+    13: (4,7), 14: (4,5), 15: (4,3), 16: (4,1),
+    17: (3,6), 18: (3,4), 19: (3,2), 20: (3,0),
+    21: (2,7), 22: (2,5), 23: (2,3), 24: (2,1),
+    25: (1,6), 26: (1,4), 27: (1,2), 28: (1,0),
+    29: (0,7), 30: (0,5), 31: (0,3), 32: (0,1)
+    }
+
 # This is a 250 line function, which I'm not thrilled about. However, every sequential step is only used once in this function.
 # I made an initial attempt to break it up into smaller functions, but I found that it made the code harder to follow.
 # I also have limited time to refactor this function, so I'm leaving it as is for now.
@@ -501,14 +562,56 @@ def perform_board_interventions(
             encoded_input = chess_utils.encode_string(META, pgn_string)
             # model input shape: (1, pgn_str_length)
             model_input = torch.tensor(encoded_input).unsqueeze(0).to(DEVICE)
+            #print(f'Check here!!!!!')
+            logits = probe_data.model(model_input)
+            #print(logits)
             argmax_model_move = chess_utils.get_model_move(
                 probe_data.model, META, model_input, temperature=0.0
             )
-
+            
+            # print("*"*100)
+            # print(f'argmax_model_move {argmax_model_move}')
+            
             # Step 3: Check if the model move is legal. parse_san will throw an exception if the move is illegal
             try:
-                model_move_san = orig_board.parse_san(argmax_model_move)
-            except:
+                #model_move_san = orig_board.parse_san(argmax_model_move)
+                ##if legal moves simply make model_move_san a tuple of from to .
+                if "-" in argmax_model_move:
+                    moves_split = argmax_model_move.split("-")
+                else:
+                    moves_split = argmax_model_move.split("x")
+                
+                #Check valid move with a deep copy of the board.
+                if len(moves_split) == 2:
+                    x = int(moves_split[0])
+                    y = int(moves_split[1])
+                    if [x,y] in orig_board.get_possible_moves():
+                        model_move_san = (int(moves_split[0]), int(moves_split[-1]))
+                    else:
+                        continue
+                else:
+                    deep_copy_board = copy.deepcopy(orig_board)
+                    moves_split = multiple_moves(moves_split) 
+                    itr_max = len(moves_split)
+                    itr = 0
+                    flag = 0
+                    while(itr<itr_max):
+                        x = int(moves_split[itr])
+                        y = int(moves_split[itr+1])
+                        if [x,y] in deep_copy_board.get_possible_moves():
+                            deep_copy_board.move([x,y])
+                        else:
+                            flag =1
+                            break
+                        itr+=2
+                    if flag==1:
+                        continue
+                    else:
+                        model_move_san = (int(moves_split[0]), int(moves_split[-1]))
+
+            except Exception as e:
+                # Print the error message
+                print(f"An error occurred: {e}")
                 continue
 
             move_counters.orig_model_tracker.orig_board_argmax_legal_total += 1
@@ -516,22 +619,33 @@ def perform_board_interventions(
             print(f"\nargmax_model_move: {argmax_model_move}\n")
 
             # Step 4: Determine which piece was moved from which source square
-            moved_piece = orig_board.piece_at(model_move_san.from_square)
-            if moved_piece is None:
+            checker_board = chess_utils.board_to_piece_color_state(orig_board)
+            xy = model_move_san[0]
+
+            moved_piece_int = checker_board[move_translater[xy][0]][move_translater[xy][0]].item()
+            #print(moved_piece_int)
+            #moved_piece = orig_board.piece_at(model_move_san.from_square)
+            if moved_piece_int is None:
                 raise Exception("No piece found at source square")
-            moved_piece_int = chess_utils.PIECE_TO_INT[moved_piece.piece_type]
+            #moved_piece_int = chess_utils.PIECE_TO_INT[moved_piece.piece_type]
             moved_piece_probe_index = chess_utils.PIECE_TO_ONE_HOT_MAPPING[moved_piece_int]
-            r, c = chess_utils.square_to_coordinate(model_move_san.from_square)
+            r, c = chess_utils.square_to_coordinate(model_move_san[0])#model_move_san.from_square
 
             # If the piece is a king, we skip the intervention as a legal chess game must have a king.
-            if moved_piece.piece_type == chess.KING:
-                continue
+            # if moved_piece.piece_type == chess.KING:
+            #     continue
+            
 
             # Step 5: Make a modified board where source square is now empty. Verify that it has legal moves available
-            modified_board = orig_board.copy()
-            modified_board.set_piece_at(model_move_san.from_square, None)
-
-            if not any(orig_board.legal_moves):
+            #modified_board = orig_board.copy()
+            modified_board = copy.deepcopy(orig_board)
+            #print(type(modified_board))
+            for piece in modified_board.board.pieces:
+                if piece.position == model_move_san[0]:
+                    piece.capture()
+            #modified_board.set_piece_at(model_move_san[0], None)
+            
+            if not any(orig_board.get_possible_moves()): #legal_moves
                 print("No legal moves available for the modified board. Skipping...")
                 continue
 
@@ -592,9 +706,15 @@ def perform_board_interventions(
                     blank_probe = probes[layer][:, :, r, c, BLANK_INDEX].squeeze()
                     piece_probe = probes[layer][:, :, r, c, moved_piece_probe_index].squeeze()
 
+                    #print(f"blank_probe vec {blank_probe}")
+                    #print(f"piece_probe vec {piece_probe}")
+                    
                     flip_dir = (piece_probe * piece_coefficient) - (blank_probe * blank_coefficient)
-                    flip_dir = flip_dir / flip_dir.norm()
-
+                    # if flip_dir.norm() == 0:
+                    #     print("Hell happened")
+                    # flip_dir = flip_dir / flip_dir.norm()
+                    
+                    #print(f"flip_dir vec {flip_dir}")
                     if (
                         intervention_type == InterventionType.AVERAGE_TARGET
                         or intervention_type == InterventionType.SINGLE_TARGET
@@ -613,6 +733,8 @@ def perform_board_interventions(
                         # print(target, scale)
 
                     resid[0, :] -= scale * flip_dir
+                    #print(f"resid vec {resid[0, :]}")
+                    
 
                     # For experimentation with dynamic scale setting
                     # coeff = resid[0, move_of_interest_index] @ flip_dir / flip_dir.norm()
@@ -622,18 +744,22 @@ def perform_board_interventions(
                     #     print(
                     #         f"Layer: {layer}, coeff: {coeff:10.3f}, scale: {scale:10.3f}, target: {target:10.3f}"
                     #     )
-
+            
                 # Step 6: Intervene on the model's activations and get the model move under the modified board state
                 probe_data.model.reset_hooks()
                 for layer in probes:
                     temp_hook_fn = partial(flip_hook, layer=layer, scale=scale)
                     hook_name = f"blocks.{layer}.hook_resid_post"
                     probe_data.model.add_hook(hook_name, temp_hook_fn)
-
+                
+                #print(f'Check here after intervention!!!!!')
+                logits = probe_data.model(model_input)
+                #print(logits)
+            
                 modified_board_argmax_model_move = chess_utils.get_model_move(
                     probe_data.model, META, model_input, temperature=0.0
                 )
-
+                
                 print(f"\nModified board argmax model move: {modified_board_argmax_model_move}\n")
 
                 # Step 6.1: Sample n moves from the modified model
@@ -697,6 +823,7 @@ def perform_board_interventions(
             f"Scale: {scale}, deterministic count: {scale_tracker[scale].mod_board_argmax_legal_total}, sampled count: {scale_tracker[scale].mod_board_sampled_legal_total}"
         )
     recording_name = RECORDING_DIR + "/" + recording_name + ".json"
+    os.makedirs(os.path.dirname(recording_name), exist_ok=True)
     with open(recording_name, "w") as file:
         records = create_recording_data(move_counters, scale_tracker)
         file.write(json.dumps(records))
@@ -709,7 +836,7 @@ def perform_board_interventions(
 if __name__ == "__main__":
 
     scales_lookup: dict[InterventionType, list[float]] = {
-        InterventionType.SINGLE_SCALE: [1.5],
+        InterventionType.SINGLE_SCALE: [1.5],#[1.5],
         InterventionType.AVERAGE_TARGET: [9.0],
         InterventionType.SINGLE_TARGET: [-9],
     }
@@ -723,12 +850,14 @@ if __name__ == "__main__":
     for intervention_type in intervention_types:
 
         probe_names = {}
-        first_layer = 5
-        last_layer = 5
+        first_layer = 6
+        last_layer = 6
 
         for i in range(first_layer, last_layer + 1, 1):
             probe_names[i] = (
-                f"tf_lens_lichess_{GPT_LAYER_COUNT}layers_ckpt_no_optimizer_chess_piece_probe_layer_{i}.pth"
+                #f"tf_lens_lichess_{GPT_LAYER_COUNT}layers_ckpt_no_optimizer_chess_piece_probe_layer_{i}.pth"
+                f"tf_lens_CheckersHuman_checkers_piece_probe_layer_{i}.pth"
+                
             )
         probe_data = get_probe_data(probe_names[first_layer], num_games)
 
@@ -743,7 +872,7 @@ if __name__ == "__main__":
 
         print(f"Recording name: {recording_name}")
 
-        perform_board_interventions(
+        success_rate = perform_board_interventions(
             probe_names,
             probe_data,
             num_games,
@@ -752,6 +881,7 @@ if __name__ == "__main__":
             track_outputs=False,
             scales=scales,
         )
+        print(success_rate)
 
 # For profiling, most cumulative time appears to be in forward pass in chess_utils.get_model_move()
 # def run_profile():

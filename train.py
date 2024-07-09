@@ -29,8 +29,10 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
-DATA_PATH = "data/checkers_games"
-MODEL_NAME = "Checkers16M.pt"
+DATA_PATH = "data/checkers_games/"
+MODEL_NAME = "CheckersHuman4layer.pt"
+META_PATH = "meta.pkl"
+EXPERIMENT_CKPT_DIR = "/DATA3/vaibhav/experiments/Checkers8layersyn20kdata"
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
@@ -40,14 +42,17 @@ log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
+#init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
+
 # wandb logging
-wandb_log = False # disabled by default
-wandb_project = 'owt'
-wandb_run_name = 'gpt2' # 'run' + str(time.time())
+wandb_log = True #False # disabled by default
+wandb_project = 'Checkers'
+wandb_run_name = '4layer_human_withcheckpoints' #'gpt2' # 
+
 # data
 dataset = 'openwebtext'
-gradient_accumulation_steps = 5*3  #5* 8 #5 * 8 # used to simulate larger batch sizes
+gradient_accumulation_steps = 5*4  #5* 8 #5 * 8 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 400 #1024
 # model
@@ -152,7 +157,7 @@ iter_num = 0
 best_val_loss = 1e9
 
 # attempt to derive vocab_size from the dataset
-meta_path = os.path.join(DATA_PATH, 'meta.pkl')
+meta_path = os.path.join(DATA_PATH, META_PATH)
 meta_vocab_size = None
 if os.path.exists(meta_path):
     with open(meta_path, 'rb') as f:
@@ -176,7 +181,8 @@ if init_from == 'scratch':
 elif init_from == 'resume':
     print(f"Resuming training from {out_dir}")
     # resume training from a checkpoint.
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    #ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = os.path.join(out_dir, 'CheckersHuman.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
     checkpoint_model_args = checkpoint['model_args']
     # force these config attributes to be equal otherwise we can't even resume training
@@ -264,6 +270,10 @@ if wandb_log and master_process:
     import wandb
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
+# if wandb_log and master_process:
+#     import wandb
+#     wandb.init(project=wandb_project, id="9fus93ui", resume="must", config=config)
+
 # training loop
 X, Y = get_batch('train') # fetch the very first batch
 t0 = time.time()
@@ -277,6 +287,7 @@ while True:
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
+    
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
@@ -298,10 +309,35 @@ while True:
                     'model_args': model_args,
                     'iter_num': iter_num,
                     'best_val_loss': best_val_loss,
+                    'best_train_loss':losses['train'],
                     'config': config,
                 }
                 print(f"saving checkpoint to {out_dir}")
                 torch.save(checkpoint, os.path.join(out_dir, MODEL_NAME))
+    
+    #our checkpointing
+    our_checkpoints = [100, 200, 300, 400, 500, 600, 700, 800, 900,
+                       1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000,
+                       10000 ,20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000,
+                       100000,150000, 200000,250000, 300000,350000, 400000,450000, 500000,550000, 600000]
+    
+    if iter_num in our_checkpoints and master_process:
+        losses = estimate_loss()
+        if losses['val'] < best_val_loss or always_save_checkpoint:
+            best_val_loss = losses['val']
+            if iter_num > 0:
+                checkpoint = {
+                    'model': raw_model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'model_args': model_args,
+                    'iter_num': iter_num,
+                    'best_val_loss': best_val_loss,
+                    'best_train_loss':losses['train'],
+                    'config': config,
+                }
+                print(f"saving checkpoint to {EXPERIMENT_CKPT_DIR}")
+                torch.save(checkpoint, os.path.join(EXPERIMENT_CKPT_DIR, f"CheckersHuman{iter_num}.pt"))
+    
     if iter_num == 0 and eval_only:
         break
 
